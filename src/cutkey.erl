@@ -68,7 +68,10 @@ rsa(Bits, E, Opts) when is_integer(Bits), Bits > 0, E band 1 =:= 1 ->
 	false -> erlang:error(badarg)
     end.
 
-erlint(MPInts) -> [ crypto:erlint(X) || X <- MPInts ].
+erlint(MPInts) when is_list(MPInts) ->
+    [erlint(X) || X <- MPInts ];
+erlint(<<Size:32, Int:Size/unit:8>>) ->
+    Int.
 
 -ifdef(TEST).
 
@@ -81,7 +84,7 @@ bare_test_() ->
      [fun() ->
 	      {ok, MPInts} = cutkey:rsa(512, 65537, [{return, bare}]),
 	      3 = length(MPInts),
-	      Fun = fun(X) -> is_integer(crypto:erlint(X)) end,
+	      Fun = fun(X) -> is_integer(erlint(X)) end,
 	      true = lists:all(Fun, MPInts)
       end,
       fun() ->
@@ -97,7 +100,7 @@ full_test_() ->
      [fun() ->
 	      {ok, MPInts} = cutkey:rsa(512, 65537, [{return, full}]),
 	      8 = length(MPInts),
-	      Fun = fun(X) -> is_integer(crypto:erlint(X)) end,
+	      Fun = fun(X) -> is_integer(erlint(X)) end,
 	      true = lists:all(Fun, MPInts)
       end,
       fun() ->

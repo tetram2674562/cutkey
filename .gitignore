@@ -1,4 +1,5 @@
 *.o
+.rebar
 *.so
 *.app
 *.dll
@@ -10,3 +11,4 @@
 .DS_Store
 deps/
 .eunit/
+c_src/*.d

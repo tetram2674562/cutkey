@@ -138,7 +138,7 @@ static ErlDrvSSizeT call(ErlDrvData edd, unsigned int cmd, char *buf,
   if (cmd == CUTKEY_CMD_RSA) {
     errno = CUTKEY_ERR_ARG;
     ei_decode_ei_term(buf, &index, &tuple);
-    if (!tuple.ei_type == ERL_TUPLE || tuple.arity != 3) {
+    if (tuple.ei_type != ERL_SMALL_TUPLE_EXT || tuple.arity != 3) {
       goto error;
     }
     ei_decode_ei_term(buf, &index, &ref);

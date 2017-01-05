@@ -1,5 +1,4 @@
 *.o
-.rebar
 *.so
 *.app
 *.dll
@@ -9,6 +8,9 @@
 *.beam
 *.bea#
 .DS_Store
-deps/
+compile_commands.json
 .eunit/
+.rebar/
+_build/
+deps/
 c_src/*.d

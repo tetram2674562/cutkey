@@ -19,7 +19,7 @@
    -------------------------------------------------------------------- */
 
 #include <erl_driver.h>
-#include <erl_interface.h>
+#include <ei.h>
 #include <string.h>
 #include <openssl/engine.h>
 #include <openssl/bn.h>
@@ -187,75 +187,85 @@ static ErlDrvSSizeT call(ErlDrvData edd, unsigned int cmd, char *buf,
 static void ready_async(ErlDrvData edd, ErlDrvThreadData async_data) {
   ck_drv_t* dd = (ck_drv_t*) edd;
   ck_job_t* job = (ck_job_t*) async_data;
+
   if (job->cmd == CUTKEY_CMD_RSA) {
-    if (job->rsa != NULL) {
-      RSA* rsa = job->rsa;
-      CUTKEY_SILENCE_DEPRECATED_ON_OSX_START
-      int esize = BN_bn2mpi(rsa->e, NULL);
-      int nsize = BN_bn2mpi(rsa->n, NULL);
-      int dsize = BN_bn2mpi(rsa->d, NULL);
-      int psize = BN_bn2mpi(rsa->p, NULL);
-      int qsize = BN_bn2mpi(rsa->q, NULL);
-      int dmp1size = BN_bn2mpi(rsa->dmp1, NULL);
-      int dmq1size = BN_bn2mpi(rsa->dmq1, NULL);
-      int iqmpsize = BN_bn2mpi(rsa->iqmp, NULL);
-      CUTKEY_SILENCE_DEPRECATED_ON_OSX_END
-      unsigned char *e = driver_alloc(esize);
-      unsigned char *n = driver_alloc(nsize);
-      unsigned char *d = driver_alloc(dsize);
-      unsigned char *p = driver_alloc(psize);
-      unsigned char *q = driver_alloc(qsize);
-      unsigned char *dmp1 = driver_alloc(dmp1size);
-      unsigned char *dmq1 = driver_alloc(dmq1size);
-      unsigned char *iqmp = driver_alloc(iqmpsize);
-      CUTKEY_SILENCE_DEPRECATED_ON_OSX_START
-      esize = BN_bn2mpi(rsa->e, e);
-      nsize = BN_bn2mpi(rsa->n, n);
-      dsize = BN_bn2mpi(rsa->d, d);
-      psize = BN_bn2mpi(rsa->p, p);
-      qsize = BN_bn2mpi(rsa->q, q);
-      dmp1size = BN_bn2mpi(rsa->dmp1, dmp1);
-      dmq1size = BN_bn2mpi(rsa->dmq1, dmq1);
-      iqmpsize = BN_bn2mpi(rsa->iqmp, iqmp);
-      CUTKEY_SILENCE_DEPRECATED_ON_OSX_END
-      ErlDrvTermData spec[] =
-	{ERL_DRV_PORT, dd->term_port,
-	 ERL_DRV_UINT, job->ref,
-	 ERL_DRV_BUF2BINARY, (ErlDrvTermData) e, esize,
-	 ERL_DRV_BUF2BINARY, (ErlDrvTermData) n, nsize,
-	 ERL_DRV_BUF2BINARY, (ErlDrvTermData) d, dsize,
-	 ERL_DRV_BUF2BINARY, (ErlDrvTermData) p, psize,
-	 ERL_DRV_BUF2BINARY, (ErlDrvTermData) q, qsize,
-	 ERL_DRV_BUF2BINARY, (ErlDrvTermData) dmp1, dmp1size,
-	 ERL_DRV_BUF2BINARY, (ErlDrvTermData) dmq1, dmq1size,
-	 ERL_DRV_BUF2BINARY, (ErlDrvTermData) iqmp, iqmpsize,
-	 ERL_DRV_NIL,
-	 ERL_DRV_LIST, 9,
-	 ERL_DRV_TUPLE, 3};
-      CUTKEY_DRV_OUTPUT_TERM(dd->erl_port, spec, sizeof(spec)/sizeof(spec[0]));
-      driver_free(e);
-      driver_free(n);
-      driver_free(d);
-      driver_free(p);
-      driver_free(q);
-      driver_free(dmp1);
-      driver_free(dmq1);
-      driver_free(iqmp);
-      CUTKEY_SILENCE_DEPRECATED_ON_OSX_START
-      RSA_free(job->rsa);
-      CUTKEY_SILENCE_DEPRECATED_ON_OSX_END
-      driver_free(async_data);
-    } else {
-      ErlDrvTermData spec[] = {ERL_DRV_PORT, dd->term_port,
-			       ERL_DRV_UINT, job->ref,
-			       ERL_DRV_ATOM, driver_mk_atom("error"),
-			       ERL_DRV_TUPLE, 3};
-      CUTKEY_DRV_OUTPUT_TERM(dd->erl_port, spec, sizeof(spec)/sizeof(spec[0]));
-      driver_free(async_data);
-    }
+      if (job->rsa != NULL) {
+          RSA* rsa = job->rsa;
+          const BIGNUM *n, *e, *d, *p, *q, *dmp1, *dmq1, *iqmp;
+
+          // Safe accessor APIs for OpenSSL 1.1+ / 3.x
+          RSA_get0_key(rsa, &n, &e, &d);
+          RSA_get0_factors(rsa, &p, &q);
+          RSA_get0_crt_params(rsa, &dmp1, &dmq1, &iqmp);
+
+          int esize = BN_num_bytes(e);
+          int nsize = BN_num_bytes(n);
+          int dsize = BN_num_bytes(d);
+          int psize = BN_num_bytes(p);
+          int qsize = BN_num_bytes(q);
+          int dmp1size = BN_num_bytes(dmp1);
+          int dmq1size = BN_num_bytes(dmq1);
+          int iqmpsize = BN_num_bytes(iqmp);
+
+          unsigned char *e_bin = driver_alloc(esize);
+          unsigned char *n_bin = driver_alloc(nsize);
+          unsigned char *d_bin = driver_alloc(dsize);
+          unsigned char *p_bin = driver_alloc(psize);
+          unsigned char *q_bin = driver_alloc(qsize);
+          unsigned char *dmp1_bin = driver_alloc(dmp1size);
+          unsigned char *dmq1_bin = driver_alloc(dmq1size);
+          unsigned char *iqmp_bin = driver_alloc(iqmpsize);
+
+          BN_bn2binpad(e, e_bin, esize);
+          BN_bn2binpad(n, n_bin, nsize);
+          BN_bn2binpad(d, d_bin, dsize);
+          BN_bn2binpad(p, p_bin, psize);
+          BN_bn2binpad(q, q_bin, qsize);
+          BN_bn2binpad(dmp1, dmp1_bin, dmp1size);
+          BN_bn2binpad(dmq1, dmq1_bin, dmq1size);
+          BN_bn2binpad(iqmp, iqmp_bin, iqmpsize);
+
+          ErlDrvTermData spec[] = {
+              ERL_DRV_PORT, dd->term_port,
+              ERL_DRV_UINT, job->ref,
+              ERL_DRV_BUF2BINARY, (ErlDrvTermData) e_bin, esize,
+              ERL_DRV_BUF2BINARY, (ErlDrvTermData) n_bin, nsize,
+              ERL_DRV_BUF2BINARY, (ErlDrvTermData) d_bin, dsize,
+              ERL_DRV_BUF2BINARY, (ErlDrvTermData) p_bin, psize,
+              ERL_DRV_BUF2BINARY, (ErlDrvTermData) q_bin, qsize,
+              ERL_DRV_BUF2BINARY, (ErlDrvTermData) dmp1_bin, dmp1size,
+              ERL_DRV_BUF2BINARY, (ErlDrvTermData) dmq1_bin, dmq1size,
+              ERL_DRV_BUF2BINARY, (ErlDrvTermData) iqmp_bin, iqmpsize,
+              ERL_DRV_NIL,
+              ERL_DRV_LIST, 9,
+              ERL_DRV_TUPLE, 3
+          };
+
+          CUTKEY_DRV_OUTPUT_TERM(dd->erl_port, spec, sizeof(spec) / sizeof(spec[0]));
+
+          driver_free(e_bin);
+          driver_free(n_bin);
+          driver_free(d_bin);
+          driver_free(p_bin);
+          driver_free(q_bin);
+          driver_free(dmp1_bin);
+          driver_free(dmq1_bin);
+          driver_free(iqmp_bin);
+
+          RSA_free(rsa);
+          driver_free(async_data);
+      } else {
+          ErlDrvTermData spec[] = {
+              ERL_DRV_PORT, dd->term_port,
+              ERL_DRV_UINT, job->ref,
+              ERL_DRV_ATOM, driver_mk_atom("error"),
+              ERL_DRV_TUPLE, 3
+          };
+          CUTKEY_DRV_OUTPUT_TERM(dd->erl_port, spec, sizeof(spec)/sizeof(spec[0]));
+          driver_free(async_data);
+      }
   }
 }
-
 static void do_rsa_job(void* data) {
   ck_job_t* job = (ck_job_t*) data;
   CUTKEY_SILENCE_DEPRECATED_ON_OSX_START

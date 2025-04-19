@@ -70,9 +70,26 @@ rsa(Bits, E, Opts) when is_integer(Bits), Bits > 0, E band 1 =:= 1 ->
 
 erlint(MPInts) when is_list(MPInts) ->
     [erlint(X) || X <- MPInts ];
-erlint(<<Size:32, Int:Size/unit:8>>) ->
-    Int.
 
+%% Old-style MPI (if ever used again)
+erlint(<<Size:32, Int:Size/unit:8>>) ->
+    Int;
+erlint(Bin) when is_binary(Bin) ->
+    try
+        case Bin of
+            %% MPI format: 4-byte length + rest
+            <<Len:32/integer, Rest/binary>> when byte_size(Rest) == Len ->
+                binary:decode_unsigned(Rest, big);
+
+            %% Otherwise: treat as unsigned big-endian binary
+            _ ->
+                binary:decode_unsigned(Bin, big)
+        end
+    catch
+        _:Reason ->
+            io:format("ERROR decoding binary: ~p Reason: ~p~n", [Bin, Reason]),
+            erlang:error(bad_mpi)
+    end.
 -ifdef(TEST).
 
 erlint_test() -> [1] = erlint([<<1:32,1>>]).
@@ -115,11 +132,13 @@ entry_test_() ->
      fun(_) -> stop() end,
      fun() ->
 	     {ok, Entry} = cutkey:rsa(512, 65537, [{return, key}]),
+		 {'RSAPrivateKey', _, N, E, _, _, _, _, _, _, _} = Entry,
+    	 PubKey = {'RSAPublicKey', N, E},
 	     Text = <<?MODULE_STRING>>,
-	     Enc0 = public_key:encrypt_public(Text, Entry),
+	     Enc0 = public_key:encrypt_public(Text, PubKey),
 	     Text = public_key:decrypt_private(Enc0, Entry),
 	     Enc1 = public_key:encrypt_private(Text, Entry),
-	     Text = public_key:decrypt_public(Enc1, Entry)
+	     Text = public_key:decrypt_public(Enc1, PubKey)
      end}.
 
 -endif.
